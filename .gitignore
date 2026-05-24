@@ -1,1 +1,19 @@
+# build artifacts
+client/dist
+client/node_modules
+python/src/gepa_viz/static
+python/dist
+python/.venv
+python/__pycache__
+**/__pycache__
+*.tsbuildinfo
+
+# env + secrets
 .env
+.env.*
+!.env.example
+
+# IDE / OS
+.DS_Store
+.idea
+.vscode

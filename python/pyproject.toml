@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gepa-viz"
+version = "0.1.0"
+description = "Live visualization for GEPA prompt-optimization runs."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "gepa",
+    "dspy",
+    "datasets",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+gepa-viz = "gepa_viz.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gepa_viz"]
+# Files under src/gepa_viz/static/ (populated by `just sync-static` from the
+# Vite build) are picked up automatically by hatchling.
+
+[tool.hatch.build.targets.sdist]
+include = ["src/gepa_viz", "README.md"]
+
+[tool.uv.sources]
+gepa = { path = "../../libs/gepa", editable = true }
+dspy = { path = "../../libs/dspy", editable = true }
+
+[tool.uv]
+override-dependencies = [
+    "gepa",
+]
