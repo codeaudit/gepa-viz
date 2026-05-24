@@ -6,6 +6,7 @@ Live visualization for [GEPA](https://github.com/gepa-ai/gepa) prompt-optimizati
 - **Rejected proposals** are small grey nodes (hover to see the feedback that produced them).
 - **Click a node** for a detail view: the candidate prompt, prompt diff vs parent, reflection minibatch with per-example feedback, and the pareto frontier as a clickable pixel grid.
 
+
 ## Install (end users)
 
 ```bash
@@ -71,6 +72,38 @@ gepa-viz serve --file run.json
 `GepaVizCallback` options: `path`, `trainset`, `live` (default `True`), `host`
 (`127.0.0.1`), `port` (`5151`), `open_browser` (`True`), `keep_alive` (`True`),
 `endpoint` (`None`), `endpoint_timeout` (`5.0`).
+
+## Reading the Visualization
+
+### Big Nodes
+![big-nodes](assets/pareto-comparison.gif)
+Big nodes are candidates that were evaluated on the valset. Each segment on the ring is a seperate example. Red segments are examples the candidate got wrong and green are examples the candidate got right.
+
+As you can see candidates 1 and 2 have the same accuracy but performed well on different examples.
+
+## Node Details
+![node-details](assets/node-details-page.gif)
+Node details page shows information for the candidate in more depth.
+**Valset Results**
+The grid at the top shows the candidates response to each example and whether it got it right or wrong. 
+
+**Prompt**
+Shows the prompt for the candidate. Use the toggle switch to see the diff between the prompt and its parent.
+
+**Mini-Batch**
+The mini batch results for the candidate. Diffs show the difference between the initial attempt and the post-reflection attempt on the minibatch.
+
+## Small Nodes
+![small-nodes](assets/rejected-node.gif)
+The small grey nodes are candidates that were rejected at the minibatch phase. After reflection the mini-batch was retried and the score didn't go up. Therefore they were never evaluated on the valset and aren't on the pareto frontier, however you can view their in depth details all the same.
+
+## Edges
+![edges-hover](assets/feedback-edges.gif)
+If you hover on the edges in the graph you will see the feedback that was given to the reflection model to generate the child candidate.
+
+
+
+
 
 ## CLI
 
