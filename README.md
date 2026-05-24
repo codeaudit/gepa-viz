@@ -1,5 +1,7 @@
 # gepa-viz
 
+![demo](assets/ful-gepa-run-viz-trimmed.gif)
+
 Live visualization for [GEPA](https://github.com/gepa-ai/gepa) prompt-optimization runs. Renders the candidate tree as a force-directed graph so you can watch prompts evolve over a pareto frontier in real time.
 
 - **Accepted candidates** are donuts whose ring segments are green/red per per-example valset score.
