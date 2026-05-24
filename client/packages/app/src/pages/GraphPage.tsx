@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Graph, useRun } from "@gepa-viz/react";
+import { Graph, useRun } from "gepa-viz";
 
 export default function GraphPage() {
   const navigate = useNavigate();

@@ -1,0 +1,90 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  # Build the Python wheel/sdist. The wheel bundles the built React SPA, so we
+  # build the client first, copy it into the package, then run `uv build`.
+  build-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags so hatch-vcs can derive the version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Build client (library + SPA)
+        run: |
+          npm ci
+          npm run build
+        working-directory: client
+
+      - name: Sync SPA into the Python package
+        run: |
+          rm -rf python/src/gepa_viz/static
+          cp -R client/packages/app/dist python/src/gepa_viz/static
+          rm -f python/src/gepa_viz/static/run.json
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Build release distributions
+        run: uv build
+        working-directory: python
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dists
+          path: python/dist/
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    needs: build-python
+    permissions:
+      id-token: write # required for PyPI OIDC trusted publishing
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dists
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Set version from release tag
+        run: npx bumpp ${{ github.event.release.tag_name }} --no-push --no-tag --no-commit -y
+        working-directory: client/packages/react
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Build library
+        run: npm run build:lib
+        working-directory: client
+
+      - name: Publish to npm
+        run: npm publish
+        working-directory: client/packages/react
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -22,7 +22,7 @@
     "esModuleInterop": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@gepa-viz/react": ["../react/src/index.ts"]
+      "gepa-viz": ["../react/src/index.ts"]
     }
   },
   "include": ["src", "vite.config.ts"]

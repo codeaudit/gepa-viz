@@ -8,7 +8,7 @@ export default defineConfig({
     alias: {
       // Resolve the workspace library to its source so editing components
       // hot-reloads in the app without rebuilding the library.
-      "@gepa-viz/react": resolve(__dirname, "../react/src/index.ts"),
+      "gepa-viz": resolve(__dirname, "../react/src/index.ts"),
     },
   },
   server: {

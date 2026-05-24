@@ -5,6 +5,7 @@ import {
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
   forceY,
   type Simulation,
   type SimulationLinkDatum,
@@ -19,6 +20,7 @@ import Donut from "./Donut";
 type NodeDatum = SimulationNodeDatum & {
   id: string;
   depth: number;
+  branch: string;
 };
 type LinkDatum = SimulationLinkDatum<NodeDatum> & {
   source: string | NodeDatum;
@@ -41,6 +43,20 @@ function depthOf(run: Run, id: string, memo = new Map<string, number>()): number
   return d;
 }
 
+// The top-level branch a node belongs to: the ancestor that is a direct child
+// of the root. Root and rootless nodes map to their own id.
+function branchOf(run: Run, id: string, memo = new Map<string, string>()): string {
+  const cached = memo.get(id);
+  if (cached !== undefined) return cached;
+  const c = run.candidates[id];
+  let b: string;
+  if (c.parent === null) b = id;
+  else if (run.candidates[c.parent].parent === null) b = id;
+  else b = branchOf(run, c.parent, memo);
+  memo.set(id, b);
+  return b;
+}
+
 type HoverState =
   | { kind: "node"; id: string; x: number; y: number }
   | { kind: "edge"; childId: string; x: number; y: number }
@@ -61,17 +77,24 @@ export default function Graph({ run, onCandidateClick }: Props) {
   const [hover, setHover] = useState<HoverState>(null);
   const [, setTick] = useState(0);
 
-  const { nodes, links, maxDepth } = useMemo(() => {
+  const { nodes, links, maxDepth, branchIndex } = useMemo(() => {
     const depthMemo = new Map<string, number>();
+    const branchMemo = new Map<string, string>();
     const nodes: NodeDatum[] = Object.keys(run.candidates).map((id) => ({
       id,
       depth: depthOf(run, id, depthMemo),
+      branch: branchOf(run, id, branchMemo),
     }));
     const links: LinkDatum[] = Object.entries(run.candidates)
       .filter(([, c]) => c.parent !== null)
       .map(([id, c]) => ({ source: c.parent as string, target: id }));
     const maxDepth = nodes.reduce((m, n) => Math.max(m, n.depth), 0);
-    return { nodes, links, maxDepth };
+    // Assign each top-level branch its own horizontal lane.
+    const branches = Array.from(new Set(nodes.map((n) => n.branch))).sort(
+      (a, b) => Number(a) - Number(b),
+    );
+    const branchIndex = new Map(branches.map((b, i) => [b, i] as const));
+    return { nodes, links, maxDepth, branchIndex };
   }, [run]);
 
   useEffect(() => {
@@ -96,6 +119,14 @@ export default function Graph({ run, onCandidateClick }: Props) {
     const usable = Math.max(120, h - topPad - bottomPad);
     const depthY = (d: number) =>
       maxDepth === 0 ? h / 2 : topPad + (d / maxDepth) * usable;
+    // Spread top-level branches across horizontal lanes so subtrees don't mix.
+    const nBranches = Math.max(1, branchIndex.size);
+    const sidePad = Math.max(60, w * 0.08);
+    const laneX = (branch: string) => {
+      const i = branchIndex.get(branch) ?? 0;
+      if (nBranches === 1) return w / 2;
+      return sidePad + (i / (nBranches - 1)) * (w - 2 * sidePad);
+    };
     const sim = forceSimulation<NodeDatum, LinkDatum>(nodes)
       .force(
         "link",
@@ -104,8 +135,9 @@ export default function Graph({ run, onCandidateClick }: Props) {
           .distance(Math.max(120, Math.min(w, h) * 0.12))
           .strength(0.9),
       )
-      .force("charge", forceManyBody().strength(-Math.max(450, w * 0.4)))
+      .force("charge", forceManyBody().strength(-Math.max(900, w * 0.8)))
       .force("center", forceCenter(w / 2, h / 2))
+      .force("x", forceX<NodeDatum>((d) => laneX(d.branch)).strength(0.18))
       .force("y", forceY<NodeDatum>((d) => depthY(d.depth)).strength(0.9))
       .force(
         "collide",
@@ -119,7 +151,7 @@ export default function Graph({ run, onCandidateClick }: Props) {
     return () => {
       sim.stop();
     };
-  }, [nodes, links, run, maxDepth, size.w, size.h]);
+  }, [nodes, links, run, maxDepth, branchIndex, size.w, size.h]);
 
   useEffect(() => {
     if (!svgRef.current) return;

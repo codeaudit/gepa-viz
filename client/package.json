@@ -7,10 +7,10 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @gepa-viz/app",
-    "build": "npm run build -w @gepa-viz/react && npm run build -w @gepa-viz/app",
-    "build:lib": "npm run build -w @gepa-viz/react",
+    "build": "npm run build -w gepa-viz && npm run build -w @gepa-viz/app",
+    "build:lib": "npm run build -w gepa-viz",
     "build:app": "npm run build -w @gepa-viz/app",
-    "lint": "npm run lint -w @gepa-viz/react && npm run lint -w @gepa-viz/app",
+    "lint": "npm run lint -w gepa-viz && npm run lint -w @gepa-viz/app",
     "preview": "npm run preview -w @gepa-viz/app"
   }
 }

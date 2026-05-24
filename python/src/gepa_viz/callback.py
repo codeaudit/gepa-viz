@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import atexit
+import json
+import logging
+import threading
+import urllib.error
+import urllib.request
+import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from .server import Hub, make_server, start_background
 from .writer import atomic_write_json, default_run_json_path
+
+logger = logging.getLogger("gepa_viz")
 
 
 def _normalize_example(ex: Any) -> dict[str, Any]:
@@ -64,12 +74,36 @@ class _IterationBuffer:
 
 
 class GepaVizCallback:
+    """GEPA callback that streams a run into the gepa-viz dashboard.
+
+    Use it as a context manager to spin up the live viewer automatically::
+
+        with GepaVizCallback(valset, trainset=trainset) as cb:
+            dspy.GEPA(..., gepa_kwargs={"callbacks": [cb]}).compile(...)
+
+    Entering starts an embedded HTTP server (browser tab opens by default) that
+    pushes run snapshots to the page over SSE. Exiting dumps ``run.json`` for
+    later static viewing and keeps the viewer alive until you press Ctrl+C.
+    Pass ``live=False`` for headless/CI runs (just dumps ``run.json`` at the end).
+
+    To stream into a *preexisting* server instead of embedding one, pass
+    ``endpoint="http://host:port"`` (e.g. one started with ``gepa-viz live``).
+    Snapshots are POSTed to ``<endpoint>/ingest``; no local server is started.
+    """
+
     def __init__(
         self,
         valset: Iterable[Any],
         *,
         path: str | Path | None = None,
         trainset: Iterable[Any] | None = None,
+        live: bool = True,
+        host: str = "127.0.0.1",
+        port: int = 5151,
+        open_browser: bool = True,
+        keep_alive: bool = True,
+        endpoint: str | None = None,
+        endpoint_timeout: float = 5.0,
     ) -> None:
         self._path = Path(path) if path is not None else default_run_json_path()
         self._valset: list[Any] = list(valset)
@@ -86,11 +120,74 @@ class GepaVizCallback:
         self._pending_valset_eval: dict[int, dict[str, Any]] = {}
         self._buf = _IterationBuffer()
 
+        # Live-server state (populated in __enter__).
+        self._live = live
+        self._host = host
+        self._port = port
+        self._open_browser = open_browser
+        self._keep_alive = keep_alive
+        self._hub: Hub | None = None
+        self._server = None
+        self._url: str | None = None
+        self._dumped = False
+        # Remote-streaming state. When set, we POST snapshots here instead of
+        # embedding a server.
+        self._endpoint = endpoint.rstrip("/") if endpoint else None
+        self._ingest_url = f"{self._endpoint}/ingest" if self._endpoint else None
+        self._endpoint_timeout = endpoint_timeout
+
         for i, ex in enumerate(self._valset):
             self._val_index_by_data_id[i] = i
             self._examples_serialized.append(_normalize_example(ex))
 
-        self._write()
+        # Always leave a run.json behind, even if used without `with`.
+        atexit.register(self._dump)
+
+    # ----- context manager / live server --------------------------------
+
+    def __enter__(self) -> "GepaVizCallback":
+        if self._endpoint is not None:
+            # Stream into a preexisting server; don't embed one.
+            print(f"gepa-viz streaming to {self._endpoint}")
+            self._publish()  # seed it with current examples
+        elif self._live:
+            self._hub = Hub()
+            self._server = make_server(
+                self._host, self._port, mode="live", hub=self._hub
+            )
+            self._port = self._server.server_address[1]
+            self._url = f"http://{self._host}:{self._port}"
+            start_background(self._server)
+            self._publish()  # seed connecting clients with current examples
+            print(f"gepa-viz live at {self._url}")
+            if self._open_browser:
+                threading.Timer(
+                    0.2, lambda: webbrowser.open(self._url or "")
+                ).start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._publish()
+        self._dump()
+        # Only linger when *we* embedded the server (nothing to keep alive when
+        # streaming to a remote endpoint or running headless).
+        if self._server is not None and self._keep_alive and exc_type is None:
+            print(
+                f"gepa-viz still live at {self._url} — press Ctrl+C to exit."
+            )
+            try:
+                threading.Event().wait()
+            except KeyboardInterrupt:
+                print("\nshutting down…")
+        self._shutdown()
+
+    def _shutdown(self) -> None:
+        if self._hub is not None:
+            self._hub.close()
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+            self._server = None
 
     # ----- lifecycle -----------------------------------------------------
 
@@ -104,13 +201,13 @@ class GepaVizCallback:
             "predictions": None,
             "minibatch": None,
         }
-        self._write()
+        self._publish()
 
     def on_iteration_start(self, event: dict[str, Any]) -> None:
         self._buf = _IterationBuffer()
 
     def on_iteration_end(self, event: dict[str, Any]) -> None:
-        self._write()
+        self._publish()
 
     # ----- per-iteration buffering --------------------------------------
 
@@ -285,11 +382,37 @@ class GepaVizCallback:
             return _normalize_example(self._trainset[data_id])
         return {"data_id": repr(data_id)}
 
-    def _write(self) -> None:
-        atomic_write_json(
-            self._path,
-            {
-                "examples": self._examples_serialized,
-                "candidates": self._candidates,
-            },
+    def _snapshot(self) -> dict[str, Any]:
+        return {
+            "examples": self._examples_serialized,
+            "candidates": self._candidates,
+        }
+
+    def _publish(self) -> None:
+        """Push the current run state to live viewers (no-op when not live)."""
+        if self._hub is not None:
+            self._hub.publish(self._snapshot())
+        elif self._ingest_url is not None:
+            self._post(self._snapshot())
+
+    def _post(self, snapshot: dict[str, Any]) -> None:
+        """Best-effort POST of a snapshot to a remote server's /ingest."""
+        data = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            self._ingest_url or "",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
         )
+        try:
+            urllib.request.urlopen(req, timeout=self._endpoint_timeout).close()
+        except (urllib.error.URLError, OSError) as e:
+            # Don't let a slow/absent server stall the optimizer.
+            logger.warning("gepa-viz: failed to POST to %s: %s", self._ingest_url, e)
+
+    def _dump(self) -> None:
+        """Write run.json to disk exactly once."""
+        if self._dumped:
+            return
+        self._dumped = True
+        atomic_write_json(self._path, self._snapshot())

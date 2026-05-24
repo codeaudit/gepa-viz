@@ -3,6 +3,7 @@ client/dist
 client/node_modules
 python/src/gepa_viz/static
 python/dist
+python/src/gepa_viz/_version.py
 python/.venv
 python/__pycache__
 **/__pycache__

@@ -671,7 +671,6 @@ provides-extras = ["full", "dspy", "test", "build", "dev", "gskill"]
 
 [[package]]
 name = "gepa-viz"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "datasets" },

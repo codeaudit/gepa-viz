@@ -1,13 +1,15 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "gepa-viz"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Live visualization for GEPA prompt-optimization runs."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Tyrin Todd", email = "tyrin@modaic.dev" }]
 dependencies = [
     "gepa",
     "dspy",
@@ -15,8 +17,21 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/modaic-ai/gepa-viz"
+Repository = "https://github.com/modaic-ai/gepa-viz"
+
 [project.scripts]
 gepa-viz = "gepa_viz.cli:main"
+
+# Version is read from git tags (e.g. v0.1.0) at build time. The git repo root
+# is one level up from this Python package, so point setuptools_scm at it.
+[tool.hatch.version]
+source = "vcs"
+raw-options = { root = ".." }
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/gepa_viz/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gepa_viz"]

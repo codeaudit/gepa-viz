@@ -16,9 +16,9 @@ import dspy
 from datasets import load_dataset
 from dotenv import load_dotenv
 from dspy import Prediction
+from spam_clasf import SpamClasif
 
 from gepa_viz import GepaVizCallback
-from spam_clasf import SpamClasif
 
 load_dotenv()
 
@@ -94,7 +94,9 @@ def main() -> None:
         enable_memory_cache=args.cache,
     )
 
-    lm = dspy.LM("openai/gpt-4o-mini", max_tokens=200)
+    lm = dspy.LM("openai/gpt-4o-mini")
+    reflection_lm = dspy.LM("openai/gpt-5")
+
     dspy.configure(lm=lm)
 
     ds = load_dataset("UniqueData/email-spam-classification")
@@ -111,18 +113,21 @@ def main() -> None:
     trainset = pool[:TRAIN_N]
     valset = pool[TRAIN_N : TRAIN_N + VAL_N]
 
+    print(f"loaded examples train={len(trainset)}, val={len(valset)}")
+
     student = dspy.Predict(SpamClasif)
 
-    callback = GepaVizCallback(valset=valset, trainset=trainset)
-
-    optimizer = dspy.GEPA(
-        metric=spam_metric,
-        auto="light",
-        reflection_lm=lm,
-        gepa_kwargs={"callbacks": [callback]},
-    )
-    optimizer.compile(student, trainset=trainset, valset=valset)
-    print(f"done — run.json written to {callback._path}")
+    # Entering the context manager spins up the live viewer; exiting dumps
+    # run.json and keeps the viewer open until you press Ctrl+C.
+    with GepaVizCallback(valset=valset, trainset=trainset) as callback:
+        optimizer = dspy.GEPA(
+            metric=spam_metric,
+            auto="heavy",
+            reflection_lm=reflection_lm,
+            gepa_kwargs={"callbacks": [callback]},
+        )
+        optimizer.compile(student, trainset=trainset, valset=valset)
+        print(f"done — run.json written to {callback._path}")
 
 
 if __name__ == "__main__":

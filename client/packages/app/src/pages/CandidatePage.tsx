@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import { CandidateView, useRun } from "@gepa-viz/react";
+import { CandidateView, useRun } from "gepa-viz";
 
 export default function CandidatePage() {
   const { id } = useParams<{ id: string }>();

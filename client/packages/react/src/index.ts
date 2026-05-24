@@ -8,7 +8,7 @@ export { default as PromptSection } from "./components/PromptSection";
 export { default as PromptDiff } from "./components/PromptDiff";
 export { default as Yaml } from "./components/Yaml";
 
-// Live-run polling
+// Live-run streaming (SSE) / static / dev-poll provider
 export { RunProvider } from "./run/provider";
 export { useRun } from "./run/useRun";
 

@@ -1,4 +1,4 @@
-import { RunProvider } from "@gepa-viz/react";
+import { RunProvider } from "gepa-viz";
 import AppRoutes from "./routes";
 
 export default function App() {
