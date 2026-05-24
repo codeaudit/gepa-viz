@@ -12,38 +12,79 @@ Live visualization for [GEPA](https://github.com/gepa-ai/gepa) prompt-optimizati
 pip install gepa-viz
 ```
 
-In your GEPA script — works equally with DSPy or base `gepa`:
+`GepaVizCallback` is a context manager. Entering it streams the run into the
+dashboard; exiting dumps a `run.json` artifact. There are three ways to use it.
+
+### 1. Embedded (default) — the callback runs its own viewer
+
+Entering `with GepaVizCallback(...)` spins up a local server and opens a browser
+tab; the graph extends node-by-node over SSE as GEPA accepts and rejects
+proposals. Exiting dumps `run.json` and keeps the viewer alive until you Ctrl+C.
+No second terminal, no CLI step. Works equally with DSPy or base `gepa`:
 
 ```python
 from gepa_viz import GepaVizCallback
 
 # DSPy
-dspy.GEPA(
-    metric=...,
-    auto="light",
-    reflection_lm=...,
-    gepa_kwargs={"callbacks": [GepaVizCallback(valset=valset, trainset=trainset, path="run.json")]},
-).compile(student, trainset=trainset, valset=valset)
+with GepaVizCallback(valset=valset, trainset=trainset) as cb:
+    dspy.GEPA(
+        metric=..., auto="light", reflection_lm=...,
+        gepa_kwargs={"callbacks": [cb]},
+    ).compile(student, trainset=trainset, valset=valset)
 
 # Base gepa
-gepa.optimize(..., callbacks=[GepaVizCallback(valset=valset, trainset=trainset, path="run.json")])
+with GepaVizCallback(valset=valset, trainset=trainset) as cb:
+    gepa.optimize(..., callbacks=[cb])
 ```
 
-In another terminal:
+### 2. Remote — stream into a standalone server
+
+Run one long-lived server and point the callback at it with `endpoint=`. The
+callback starts no server of its own; it POSTs snapshots to `<endpoint>/ingest`
+and the server fans them out to connected browsers over SSE. Useful when the
+optimizer runs on a different machine (`gepa-viz live --host 0.0.0.0`).
 
 ```bash
-gepa-viz serve --run run.json
+gepa-viz live          # serves the SPA + /events + /ingest on :5151
 ```
 
-A browser tab opens to `http://127.0.0.1:5151` and the graph extends node-by-node as GEPA accepts and rejects proposals.
+```python
+with GepaVizCallback(valset=valset, trainset=trainset,
+                     endpoint="http://127.0.0.1:5151") as cb:
+    dspy.GEPA(..., gepa_kwargs={"callbacks": [cb]}).compile(student, ...)
+```
+
+### 3. Static — dump now, view later
+
+Pass `live=False` for a headless/CI run that just writes `run.json` at the end,
+then re-open it any time in a static viewer (loads once, no streaming):
+
+```python
+with GepaVizCallback(valset=valset, live=False, path="run.json") as cb:
+    dspy.GEPA(..., gepa_kwargs={"callbacks": [cb]}).compile(student, ...)
+```
+
+```bash
+gepa-viz serve --file run.json
+```
+
+`GepaVizCallback` options: `path`, `trainset`, `live` (default `True`), `host`
+(`127.0.0.1`), `port` (`5151`), `open_browser` (`True`), `keep_alive` (`True`),
+`endpoint` (`None`), `endpoint_timeout` (`5.0`).
 
 ## CLI
 
 ```
-gepa-viz serve [--run PATH] [--host HOST] [--port N] [--open | --no-open]
+gepa-viz serve [--file PATH] [--host HOST] [--port N] [--open | --no-open]
+gepa-viz live  [--host HOST] [--port N] [--open | --no-open]
 ```
 
-Defaults: `--run ./run.json`, `--host 127.0.0.1`, `--port 5151`, browser opens on start. The server is a tiny stdlib `ThreadingHTTPServer` — no Node, no extra runtime.
+- `serve` — **static** viewer for a dumped `run.json` (loads once, no polling).
+  Defaults: `--file ./run.json`, `--host 127.0.0.1`, `--port 5151`.
+- `live` — **live** server a remote producer streams into via `/ingest`; serves
+  the SPA and pushes updates to browsers over SSE.
+
+The server is a tiny stdlib `ThreadingHTTPServer` — no Node, no extra runtime.
 
 ## Repo layout
 

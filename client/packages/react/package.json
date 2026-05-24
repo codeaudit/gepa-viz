@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/modaic-ai/gepa-viz",
+    "url": "git+https://github.com/modaic-ai/gepa-viz.git",
     "directory": "client/packages/react"
   },
   "homepage": "https://github.com/modaic-ai/gepa-viz#readme",
